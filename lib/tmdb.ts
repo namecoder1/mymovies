@@ -7,6 +7,7 @@ import {
   TVShowDetails,
   Credits,
   SeasonDetails,
+  CollectionDetails,
 } from "./types";
 
 import { unstable_cache } from "next/cache";
@@ -141,10 +142,80 @@ export async function getMovieCredits(id: string): Promise<Credits> {
   return fetchFromTMDB<Credits>(`/movie/${id}/credits`);
 }
 
+export async function getTVShowCredits(id: string): Promise<Credits> {
+  return fetchFromTMDB<Credits>(`/tv/${id}/credits`);
+}
+
 export const getSeasonDetails = unstable_cache(
   async (tvId: string, seasonNumber: number): Promise<SeasonDetails> => {
     return fetchFromTMDB<SeasonDetails>(`/tv/${tvId}/season/${seasonNumber}`);
   },
   ["season-details"], // Note: Ideally should include IDs in cache key
+  { revalidate: 3600 }
+);
+
+export const getCollectionDetails = unstable_cache(
+  async (id: number): Promise<CollectionDetails> => {
+    const data = await fetchFromTMDB<CollectionDetails>(`/collection/${id}`);
+    // Parts inside collection don't usually have media_type, so we ensure they are treated as movies
+    data.parts = data.parts.map((part) => ({
+      ...part,
+      media_type: "movie" as const,
+    }));
+    return data;
+  },
+  ["collection-details"],
+  { revalidate: 3600 }
+);
+
+export const getSimilarMovies = unstable_cache(
+  async (id: string): Promise<ContentItem[]> => {
+    const data = await fetchFromTMDB<{ results: Omit<Movie, "media_type">[] }>(
+      `/movie/${id}/similar`
+    );
+    return data.results
+      .map((item) => ({ ...item, media_type: "movie" as const }))
+      .slice(0, 20);
+  },
+  ["similar-movies"],
+  { revalidate: 3600 }
+);
+
+export const getRecommendedMovies = unstable_cache(
+  async (id: string): Promise<ContentItem[]> => {
+    const data = await fetchFromTMDB<{ results: Omit<Movie, "media_type">[] }>(
+      `/movie/${id}/recommendations`
+    );
+    return data.results
+      .map((item) => ({ ...item, media_type: "movie" as const }))
+      .slice(0, 20);
+  },
+  ["recommended-movies"],
+  { revalidate: 3600 }
+);
+
+export const getSimilarTVShows = unstable_cache(
+  async (id: string): Promise<ContentItem[]> => {
+    const data = await fetchFromTMDB<{ results: Omit<TVShow, "media_type">[] }>(
+      `/tv/${id}/similar`
+    );
+    return data.results
+      .map((item) => ({ ...item, media_type: "tv" as const }))
+      .slice(0, 20);
+  },
+  ["similar-tv"],
+  { revalidate: 3600 }
+);
+
+export const getRecommendedTVShows = unstable_cache(
+  async (id: string): Promise<ContentItem[]> => {
+    const data = await fetchFromTMDB<{ results: Omit<TVShow, "media_type">[] }>(
+      `/tv/${id}/recommendations`
+    );
+    return data.results
+      .map((item) => ({ ...item, media_type: "tv" as const }))
+      .slice(0, 20);
+  },
+  ["recommended-tv"],
   { revalidate: 3600 }
 );

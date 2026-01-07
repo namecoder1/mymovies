@@ -251,6 +251,75 @@ export async function toggleVote(
   }
 }
 
+export async function setUserRating(
+  profileId: string,
+  tmdbId: number,
+  rating: number,
+  mediaType?: "movie" | "tv", // Optional but helpful for initial insert
+  metadata?: {
+    title: string;
+    posterPath: string;
+    releaseDate?: string;
+    genres?: string; // JSON string
+    totalDuration?: number;
+  }
+) {
+  try {
+    const supabase = await createClient();
+
+    // Check if exists
+    const { data: existing } = await supabase
+      .from("user_media")
+      .select("id")
+      .eq("profile_id", profileId)
+      .eq("tmdb_id", tmdbId)
+      .single();
+
+    if (existing) {
+      const { error } = await supabase
+        .from("user_media")
+        .update({
+          vote: rating.toString(), // Store as string as requested
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existing.id);
+
+      if (error) throw error;
+    } else {
+      // If it doesn't exist, we need to create it.
+      // We need minimum requirement fields.
+      if (!mediaType || !metadata) {
+        throw new Error(
+          "Cannot create user_media record without mediaType and metadata"
+        );
+      }
+
+      const { error } = await supabase.from("user_media").insert({
+        profile_id: profileId,
+        tmdb_id: tmdbId,
+        media_type: mediaType,
+        title: metadata.title,
+        poster_path: metadata.posterPath,
+        release_date: metadata.releaseDate,
+        genres: metadata.genres,
+        total_duration: metadata.totalDuration,
+        vote: rating.toString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      if (error) throw error;
+    }
+
+    revalidatePath(`/movies/${tmdbId}`);
+    revalidatePath(`/tv/${tmdbId}`);
+    revalidatePath("/");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to set user rating:", error);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function removeFromContinueWatching(
   profileId: string,
   tmdbId: number

@@ -1,11 +1,14 @@
 import WatchListButton from '@/components/WatchListButton';
-import { getMovieDetails, getImageUrl, getMovieCredits } from '@/lib/tmdb';
+import { getMovieDetails, getImageUrl, getMovieCredits, getSimilarMovies, getCollectionDetails } from '@/lib/tmdb';
+import CategorySection from '@/components/CategorySection';
 import { Star, Clock, Calendar, Play } from 'lucide-react';
 import Link from 'next/link';
 import MovieStatusChecker from '@/components/MovieStatusChecker';
 import { cookies } from 'next/headers';
 import { getWatchStatus, getMovieProgress } from '@/lib/actions';
 import { Progress } from '@/components/ui/progress';
+import RatingContent from '@/components/Rating';
+
 
 export default async function MoviePage({
   params,
@@ -17,6 +20,9 @@ export default async function MoviePage({
   const credits = await getMovieCredits(id);
   const backdrop = getImageUrl(movie.backdrop_path, 'original');
   const poster = getImageUrl(movie.poster_path, 'w500');
+
+  const similarMovies = await getSimilarMovies(id);
+  const collection = movie.belongs_to_collection ? await getCollectionDetails(movie.belongs_to_collection.id) : null;
 
 
   const cookieStore = await cookies();
@@ -84,7 +90,7 @@ export default async function MoviePage({
               <div className="flex flex-col sm:flex-row gap-4">
                 <Link
                   href={`/movies/${id}/watch`}
-                  className="flex flex-col w-full sm:w-fit items-center justify-center gap-1 bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-xl font-bold text-lg transition-transform hover:scale-105 shadow-lg shadow-red-900/20"
+                  className="flex flex-col w-full sm:w-fit text-center items-center justify-center gap-1 bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-xl font-bold text-lg transition-transform hover:scale-105 shadow-lg shadow-red-900/20"
                 >
                   {watchStatus?.status === 'watching' ? (
                     <span>Riprendi</span>
@@ -113,6 +119,23 @@ export default async function MoviePage({
       <div className="container mx-auto px-4 py-12 grid grid-cols-1 md:grid-cols-3 gap-12">
         {/* Main Content */}
         <div className="md:col-span-2 space-y-12">
+
+
+          <div>
+            <RatingContent
+              tmdbId={movie.id}
+              mediaType="movie"
+              profileId={profileId}
+              initialValue={watchStatus?.vote ? parseInt(watchStatus.vote) : 0}
+              metadata={{
+                title: movie.title,
+                posterPath: movie.poster_path || "",
+                releaseDate: movie.release_date,
+                genres: JSON.stringify(movie.genres),
+                totalDuration: movie.runtime
+              }}
+            />
+          </div>
           <section>
             <h2 className="text-2xl font-bold mb-4 text-zinc-100">Sinossi</h2>
             <p className="text-lg text-zinc-300 leading-relaxed drop-shadow-md">
@@ -165,6 +188,23 @@ export default async function MoviePage({
           </div>
         </div>
       </div>
+
+      {collection && (
+        <div className="container mx-auto px-4">
+          <CategorySection
+            title={`Saga: ${collection.name}`}
+            items={collection.parts.filter(p => p.id !== movie.id)}
+          />
+        </div>
+      )}
+
+      <div className="container mx-auto px-4">
+        <CategorySection
+          title="Titoli Simili"
+          items={similarMovies}
+        />
+      </div>
+
       <MovieStatusChecker tmdbId={movie.id} />
     </main>
   );

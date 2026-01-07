@@ -117,8 +117,8 @@ export default function SeasonList({
               className={cn(
                 "px-6 py-2 rounded-full font-medium whitespace-nowrap transition-colors border flex items-center gap-2",
                 activeSeasonId === season.season_number
-                  ? "bg-white text-black border-white"
-                  : "bg-transparent text-zinc-400 border-zinc-700 hover:border-zinc-500 hover:text-white"
+                  ? "bg-zinc-900 text-white border-red-500"
+                  : "bg-card text-zinc-400 border-border hover:border-red-500/30 hover:text-white"
               )}
             >
               {season.season_number === 0 ? "Speciali" : `Stagione ${season.season_number}`}
@@ -179,12 +179,12 @@ export default function SeasonList({
                     id={`episode-${episode.episode_number}`}
                     href={`/tv/${showId}/watch?season=${activeSeason.season_number}&episode=${episode.episode_number}`}
                     className={cn(
-                      "group flex flex-col md:flex-row gap-4 p-4 rounded-xl border transition-all",
+                      "group flex flex-col sm:flex-row gap-4 p-4 rounded-xl border transition-all",
                       "bg-zinc-900/40 border-zinc-800/50 hover:bg-zinc-900 hover:border-zinc-700"
                     )}
                   >
                     {/* Thumbnail */}
-                    <div className="relative w-full md:w-64 aspect-video rounded-lg overflow-hidden shrink-0 bg-zinc-800">
+                    <div className="relative w-full sm:w-64 aspect-video rounded-lg overflow-hidden shrink-0 bg-zinc-800">
                       {episode.still_path ? (
                         <img
                           src={getImageUrl(episode.still_path, 'w500')}

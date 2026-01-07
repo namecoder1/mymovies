@@ -41,6 +41,23 @@ export default async function WatchEpisodePage({
     }
   }
 
+  // Calculate next episode URL
+  let nextEpisodeUrl: string | null = null;
+  const currentSeason = show.seasons.find((s) => s.season_number === seasonNum);
+
+  if (currentSeason) {
+    if (episodeNum < currentSeason.episode_count) {
+      // Next episode in same season
+      nextEpisodeUrl = `/tv/${id}/watch?season=${seasonNum}&episode=${episodeNum + 1}`;
+    } else {
+      // Check for next season
+      const nextSeason = show.seasons.find((s) => s.season_number === seasonNum + 1);
+      if (nextSeason) {
+        nextEpisodeUrl = `/tv/${id}/watch?season=${seasonNum + 1}&episode=1`;
+      }
+    }
+  }
+
   return (
     <div className="fixed inset-0 w-full h-full bg-black z-50">
       <Link
@@ -60,6 +77,7 @@ export default async function WatchEpisodePage({
         totalDuration={show.episode_run_time?.[0] ? show.episode_run_time[0] * 60 : 0}
         genres={JSON.stringify(show.genres || [])}
         startTime={startTime}
+        nextEpisodeUrl={nextEpisodeUrl}
       />
     </div>
   );

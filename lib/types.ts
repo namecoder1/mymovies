@@ -40,6 +40,7 @@ export interface MovieDetails extends Movie {
   runtime: number;
   tagline: string;
   status: string;
+  belongs_to_collection: CollectionInfo | null;
 }
 
 export interface TVShowDetails extends TVShow {
@@ -50,6 +51,27 @@ export interface TVShowDetails extends TVShow {
   status: string;
   tagline: string;
   episode_run_time: number[];
+  created_by: {
+    id: number;
+    credit_id: string;
+    name: string;
+    gender: number;
+    profile_path: string | null;
+  }[];
+  networks: {
+    name: string;
+    id: number;
+    logo_path: string | null;
+    origin_country: string;
+  }[];
+  production_companies: {
+    id: number;
+    logo_path: string | null;
+    name: string;
+    origin_country: string;
+  }[];
+  original_language: string;
+  type: string;
 }
 
 export interface Season {
@@ -123,4 +145,20 @@ export interface Credits {
   id: number;
   cast: Cast[];
   crew: Crew[];
+}
+
+export interface CollectionInfo {
+  id: number;
+  name: string;
+  poster_path: string | null;
+  backdrop_path: string | null;
+}
+
+export interface CollectionDetails {
+  id: number;
+  name: string;
+  overview: string;
+  poster_path: string | null;
+  backdrop_path: string | null;
+  parts: Movie[];
 }
