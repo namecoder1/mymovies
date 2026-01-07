@@ -24,7 +24,7 @@ export default async function TVShowPage({
 
   if (profileId) {
     const [status, progressList] = await Promise.all([
-      getWatchStatus(profileId, Number(id)),
+      getWatchStatus(profileId, Number(id), 'tv'),
       getEpisodeProgress(profileId, Number(id))
     ]);
     watchStatus = status;
@@ -81,10 +81,19 @@ export default async function TVShowPage({
 
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
-                href={`/tv/${id}/watch?season=1&episode=1`}
-                className="flex w-full sm:w-fit items-center justify-center gap-3 bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-xl font-bold text-lg transition-transform hover:scale-105 shadow-lg shadow-red-900/20"
+                href={watchStatus?.lastSeason && watchStatus?.lastEpisode
+                  ? `/tv/${id}/watch?season=${watchStatus.lastSeason}&episode=${watchStatus.lastEpisode}`
+                  : `/tv/${id}/watch?season=1&episode=1`
+                }
+                className="flex flex-col w-full sm:w-fit items-center justify-center gap-1 bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-xl font-bold text-lg transition-transform hover:scale-105 shadow-lg shadow-red-900/20"
               >
-                Guarda ora
+                {watchStatus?.status === 'watching' || watchStatus?.lastSeason ? (
+                  <>
+                    <span>Riprendi Ep.{watchStatus.lastEpisode} S.{watchStatus.lastSeason}</span>
+                  </>
+                ) : (
+                  "Guarda ora"
+                )}
               </Link>
               <WatchListButton
                 tmdbId={show.id}
@@ -110,6 +119,7 @@ export default async function TVShowPage({
           episodeProgress={episodeProgress}
         />
       </div>
-    </main>
+    </main >
   );
 }
+

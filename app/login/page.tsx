@@ -8,10 +8,10 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-black text-white">
-      <div className="w-full max-w-md p-8 space-y-6 bg-zinc-900 rounded-xl border border-zinc-800">
+      <div className="w-full sm:max-w-sm p-8 space-y-6 bg-zinc-900 sm:rounded-xl border border-zinc-800">
         <div className="text-center">
-          <h1 className="text-2xl font-bold">Welcome Back</h1>
-          <p className="text-zinc-400 mt-2">Sign in to access your movies</p>
+          <h1 className="text-2xl font-bold">Bentornato!</h1>
+          <p className="text-zinc-400 mt-2">Questa area è per pochi, ma se sei qui, sei tra loro.</p>
         </div>
 
         <form action={formAction} className="space-y-4">
@@ -57,6 +57,7 @@ export default function LoginPage() {
             {isPending ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+        <p className="text-zinc-400 text-xs text-center mt-2">Sei sicuro di avere l'accesso? Non si imbroglia!</p>
       </div>
     </div>
   )

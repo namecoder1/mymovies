@@ -22,6 +22,8 @@ export interface TVShow {
   media_type: "tv";
   progress?: number;
   totalDuration?: number;
+  last_season?: number;
+  last_episode?: number;
 }
 
 export type ContentItem = Movie | TVShow;

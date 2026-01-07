@@ -58,6 +58,7 @@ export default async function WatchEpisodePage({
         title={show.name}
         posterPath={show.poster_path || ''}
         totalDuration={show.episode_run_time?.[0] ? show.episode_run_time[0] * 60 : 0}
+        genres={JSON.stringify(show.genres || [])}
         startTime={startTime}
       />
     </div>

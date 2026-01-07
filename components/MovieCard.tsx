@@ -35,6 +35,12 @@ export default function MovieCard({ item, showStatusToggle = false, onStatusChan
       {/* Overlay with info on hover (desktop) or always visible minimal info */}
       <div className="absolute inset-0 flex flex-col justify-end p-4 opacity-0 group-hover:opacity-100 transition-opacity bg-linear-to-t from-black via-black/50 to-transparent">
         <h3 className="font-bold text-white text-lg leading-tight line-clamp-2">{title}</h3>
+
+        {item.media_type === 'tv' && item.last_season && item.last_episode && (
+          <div className="text-xs font-medium text-red-400 mb-1">
+            S{item.last_season} E{item.last_episode}
+          </div>
+        )}
         <div className="flex items-center gap-2 text-sm text-zinc-300 mt-1">
           <span className="flex items-center gap-1 text-yellow-400">
             <Star className="w-3 h-3 fill-yellow-400" /> {item.vote_average?.toFixed(1)}

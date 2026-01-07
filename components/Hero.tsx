@@ -11,7 +11,7 @@ export default function Hero({ item }: { item: ContentItem }) {
   const backdrop = getImageUrl(item.backdrop_path, 'original');
 
   return (
-    <div className="relative h-[70vh] w-full flex items-center">
+    <div className="relative h-[70vh] mb-10 w-full flex items-center">
       {/* Background Image */}
       <div className="absolute inset-0 z-0">
         <img

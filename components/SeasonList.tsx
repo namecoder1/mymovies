@@ -75,6 +75,27 @@ export default function SeasonList({
   // Fallback for metadata if details not loaded yet
   const activeSeasonMeta = sortedSeasons.find(s => s.season_number === activeSeasonId);
 
+  // Auto-scroll to current episode when season loads
+  useEffect(() => {
+    if (activeSeason && watchStatus?.lastSeason === activeSeason.season_number && watchStatus?.lastEpisode) {
+      // Small timeout to ensure DOM is ready
+      const timer = setTimeout(() => {
+        const element = document.getElementById(`episode-${watchStatus.lastEpisode}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Highlight effect
+          element.classList.add('ring-2', 'ring-red-500', 'ring-offset-2', 'ring-offset-zinc-950');
+          setTimeout(() => {
+            element.classList.remove('ring-2', 'ring-red-500', 'ring-offset-2', 'ring-offset-zinc-950');
+          }, 2000);
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [activeSeasonId, loadedSeasons, watchStatus]);
+
+
+
   return (
     <div className="space-y-8">
       {/* Season Tabs */}
@@ -155,6 +176,7 @@ export default function SeasonList({
                 return (
                   <Link
                     key={episode.id}
+                    id={`episode-${episode.episode_number}`}
                     href={`/tv/${showId}/watch?season=${activeSeason.season_number}&episode=${episode.episode_number}`}
                     className={cn(
                       "group flex flex-col md:flex-row gap-4 p-4 rounded-xl border transition-all",

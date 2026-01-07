@@ -3,9 +3,13 @@
 import { useEffect, useState } from 'react';
 import { useProfile } from './ProfileProvider';
 import { createClient } from '@/supabase/client';
-import { Plus, User, Trash2, Pencil, X } from 'lucide-react';
+import { Plus, User } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Button } from './ui/button';
 
 type Profile = {
   id: string;
@@ -57,6 +61,8 @@ export default function ProfileGate({ children }: { children: React.ReactNode })
         if (savedId) {
           const found = fetchedProfiles.find(p => p.id === savedId);
           if (found) {
+            // Ensure cookie matches (sync repair)
+            document.cookie = `profile_id=${found.id}; path=/; max-age=31536000; SameSite=Lax`;
             switchProfile(found);
           }
         }
@@ -119,23 +125,26 @@ export default function ProfileGate({ children }: { children: React.ReactNode })
   return (
     <div className="fixed inset-0 z-50 bg-zinc-950 flex flex-col items-center justify-center animate-in fade-in duration-500">
       <div className="w-full max-w-4xl px-4 text-center">
-        <h1 className="text-4xl md:text-5xl font-bold text-white mb-12">Chi sta guardando?</h1>
+        <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-12">Chi sta guardando?</h1>
 
-        <div className="flex flex-wrap items-center justify-center gap-8">
+        <div className="flex flex-wrap items-center justify-center gap-8 px-6">
           {profiles.map(profile => (
             <button
               key={profile.id}
               onClick={() => switchProfile(profile)}
               className="group flex flex-col items-center gap-4 transition-transform hover:scale-105"
             >
-              <div className="relative w-32 h-32 md:w-40 md:h-40 rounded-md overflow-hidden ring-2 ring-transparent group-hover:ring-white transition-all">
+              <div className="relative w-24 h-24 md:w-40 md:h-40 rounded-4xl overflow-hidden ring-4 ring-transparent group-hover:ring-neutral-300 transition-all">
                 {profile.avatar_url ? (
-                  <Image
-                    src={profile.avatar_url}
-                    alt={profile.name}
-                    fill
-                    className="object-cover"
-                  />
+                  <div>
+                    <Image
+                      src={profile.avatar_url}
+                      alt={profile.name}
+                      fill
+                      className="object-cover"
+                    />
+                    <span className="text-[10px] z-100 font-bold absolute bottom-0 right-0 bg-white h-8 w-8 rounded-tl-2xl text-black flex items-center justify-center">{profile.short}</span>
+                  </div>
                 ) : (
                   <div className="w-full h-full bg-zinc-800 flex items-center justify-center">
                     <User className="w-16 h-16 text-zinc-400" />
@@ -153,49 +162,53 @@ export default function ProfileGate({ children }: { children: React.ReactNode })
             onClick={() => setIsCreating(true)}
             className="group flex flex-col items-center gap-4 transition-transform hover:scale-105"
           >
-            <div className="w-32 h-32 md:w-40 md:h-40 rounded-md bg-zinc-900 border-2 border-transparent group-hover:bg-zinc-800 flex items-center justify-center">
+            <div className="w-24 h-24 md:w-40 md:h-40 rounded-4xl bg-zinc-900 border-2 border-transparent group-hover:bg-zinc-800 flex items-center justify-center">
               <Plus className="w-16 h-16 text-zinc-500 group-hover:text-zinc-300 transition-colors" />
             </div>
             <span className="text-zinc-500 group-hover:text-zinc-300 text-lg md:text-xl transition-colors">
-              Aggiungi Profilo
+              Aggiungi
             </span>
           </button>
         </div>
 
         {isCreating && (
-          <div className="fixed inset-0 z-100 bg-black/80 flex items-center justify-center p-4">
-            <div className="bg-zinc-900 p-8 rounded-lg max-w-md w-full border border-zinc-800">
-              <h2 className="text-2xl font-bold text-white mb-6">Nuovo Profilo</h2>
+          <Dialog open={isCreating} onOpenChange={setIsCreating}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>
+                  Nuovo Profilo
+                </DialogTitle>
+              </DialogHeader>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-zinc-400 mb-2">Nome</label>
-                  <input
+                  <Label htmlFor='name' className="block text-sm font-medium text-zinc-400 mb-2">Nome</Label>
+                  <Input
+                    id='name'
                     type="text"
                     value={newProfileName}
                     onChange={(e) => setNewProfileName(e.target.value)}
-                    className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded text-white focus:outline-none focus:border-red-600"
                     placeholder="Nome profilo"
                     autoFocus
                   />
                 </div>
                 <div className="flex justify-end gap-3 mt-6">
-                  <button
+                  <Button
+                    variant='outline'
                     onClick={() => setIsCreating(false)}
-                    className="px-4 py-2 text-zinc-400 hover:text-white transition-colors"
                   >
                     Annulla
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={handleCreateProfile}
                     disabled={!newProfileName.trim()}
-                    className="px-6 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className='bg-red-500 hover:bg-red-400 text-white'
                   >
                     Crea
-                  </button>
+                  </Button>
                 </div>
               </div>
-            </div>
-          </div>
+            </DialogContent>
+          </Dialog>
         )}
       </div>
     </div>

@@ -8,10 +8,22 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Button } from './ui/button';
 import { Menu } from 'lucide-react';
 import { usePathname } from 'next/navigation';
+import { createClient } from '@/supabase/client';
+import { User } from '@supabase/supabase-js';
 
 export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
   const pathname = usePathname();
+
+  useEffect(() => {
+    const fetchInfo = async () => {
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    }
+    fetchInfo();
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -29,9 +41,37 @@ export default function Navbar() {
     };
   }, []);
 
+  
+
   function checkRoute(route: string) {
     if (pathname === route) return true;
     return false;
+  }
+
+  if (!user) {
+    return (
+      <nav className={`fixed top-0 w-full z-50 transition-colors duration-300 ${isScrolled ? 'bg-black/80 backdrop-blur-sm' : 'bg-transparent'}`}>
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-10">
+            <Link href="/" className="text-2xl font-bold text-red-600 tracking-tighter hover:scale-105 transition-transform flex ">
+              Famflix
+            </Link>
+            <div className="hidden sm:flex items-center gap-4">
+              <Link href="/movies" className={checkRoute('/movies') ? 'text-red-500' : 'text-white hover:text-red-600 transition-colors'}>
+                Film
+              </Link>
+              <Link href="/tv" className={checkRoute('/tv') ? 'text-red-500' : 'text-white hover:text-red-600 transition-colors'}>
+                Serie TV
+              </Link>
+              <Link href="/favorites" className={checkRoute('/favorites') ? 'text-red-500' : 'text-white hover:text-red-600 transition-colors'}>
+                Preferiti
+              </Link>
+            </div>
+          </div>
+          <ProfileSwitcher user={user} />
+        </div>
+      </nav>
+    )
   }
 
   return (
@@ -60,7 +100,7 @@ export default function Navbar() {
           <div className='md:hidden mt-2'>
             <SearchInput version="mobile" />
           </div>
-          <ProfileSwitcher />
+          <ProfileSwitcher user={user} />
           <div className='md:hidden'>
             <MenuButton />
           </div>

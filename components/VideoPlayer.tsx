@@ -13,6 +13,7 @@ interface VideoPlayerProps {
   title: string;
   posterPath: string;
   totalDuration?: number;
+  genres?: string; // JSON string
 }
 
 export default function VideoPlayer({
@@ -23,7 +24,8 @@ export default function VideoPlayer({
   startTime,
   title,
   posterPath,
-  totalDuration
+  totalDuration,
+  genres
 }: VideoPlayerProps) {
   const { currentProfile } = useProfile();
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -132,7 +134,8 @@ export default function VideoPlayer({
                 mediaType,
                 title,
                 posterPath,
-                totalDuration: durationRef.current
+                totalDuration: durationRef.current,
+                genres: genres // Pass genres
               }
             );
           } else {
@@ -145,7 +148,8 @@ export default function VideoPlayer({
               {
                 title,
                 posterPath,
-                totalDuration: durationRef.current
+                totalDuration: durationRef.current,
+                genres: genres // Pass genres
               }
             );
           }
@@ -158,7 +162,7 @@ export default function VideoPlayer({
       window.removeEventListener('message', handleMessage);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [currentProfile, tmdbId, season, episode, mediaType, title, posterPath, totalDuration]);
+  }, [currentProfile, tmdbId, season, episode, mediaType, title, posterPath, totalDuration, genres]);
 
   return (
     <iframe

@@ -40,6 +40,7 @@ export default async function WatchMoviePage({
         title={movie.title}
         posterPath={movie.poster_path || ''}
         totalDuration={movie.runtime}
+        genres={JSON.stringify(movie.genres || [])}
         startTime={startTime}
       />
     </div>

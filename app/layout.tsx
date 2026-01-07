@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "MyMovies - Streaming Gratuito",
-  description: "Guarda film e serie TV gratis",
+  title: "Famflix | Streaming per la famiglia",
+  description: "Guarda film e serie TV insieme alla tua famiglia",
 };
 
 import { ProfileProvider } from "@/components/ProfileProvider";

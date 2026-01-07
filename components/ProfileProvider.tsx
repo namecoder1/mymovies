@@ -13,7 +13,7 @@ type Profile = {
 
 type ProfileContextType = {
   currentProfile: Profile | null;
-  switchProfile: (profile: Profile) => void;
+  switchProfile: (profile: Profile | null) => void;
   isLoading: boolean;
 };
 
@@ -39,9 +39,16 @@ export function ProfileProvider({ children, initialProfileId }: { children: Reac
   // WAIT, the ProfileSwitcher needs to know the profiles. 
   // Let's make the Context just hold the state and functions, and maybe trigger a re-verify.
 
-  const switchProfile = (profile: Profile) => {
-    localStorage.setItem('profile_id', profile.id.toString());
-    setCurrentProfile(profile);
+  const switchProfile = (profile: Profile | null) => {
+    if (profile) {
+      localStorage.setItem('profile_id', profile.id.toString());
+      document.cookie = `profile_id=${profile.id}; path=/; max-age=31536000; SameSite=Lax`;
+      setCurrentProfile(profile);
+    } else {
+      localStorage.removeItem('profile_id');
+      document.cookie = 'profile_id=; path=/; max-age=0; SameSite=Lax';
+      setCurrentProfile(null);
+    }
     router.refresh();
   };
 

@@ -2,6 +2,10 @@ import WatchListButton from '@/components/WatchListButton';
 import { getMovieDetails, getImageUrl, getMovieCredits } from '@/lib/tmdb';
 import { Star, Clock, Calendar, Play } from 'lucide-react';
 import Link from 'next/link';
+import MovieStatusChecker from '@/components/MovieStatusChecker';
+import { cookies } from 'next/headers';
+import { getWatchStatus, getMovieProgress } from '@/lib/actions';
+import { Progress } from '@/components/ui/progress';
 
 export default async function MoviePage({
   params,
@@ -13,6 +17,17 @@ export default async function MoviePage({
   const credits = await getMovieCredits(id);
   const backdrop = getImageUrl(movie.backdrop_path, 'original');
   const poster = getImageUrl(movie.poster_path, 'w500');
+
+
+  const cookieStore = await cookies();
+  const profileId = cookieStore.get('profile_id')?.value;
+  let watchStatus = null;
+  let movieProgress = null; // New debug variable
+
+  if (profileId) {
+    watchStatus = await getWatchStatus(profileId, Number(id), 'movie');
+    movieProgress = await getMovieProgress(profileId, Number(id));
+  }
 
   // Filter casting: top 10 actors
   const cast = credits.cast.slice(0, 10);
@@ -59,13 +74,25 @@ export default async function MoviePage({
                 </div>
               </div>
 
-              <div className="flex gap-4 mt-6">
+              {watchStatus?.status === 'watching' && (
+                <>
+                  <span className="text-xs font-medium opacity-90 uppercase tracking-widest">Progresso nel film: {(Math.round((watchStatus.progress || 0) / 60) / movie.runtime * 100).toFixed(2)}%</span>
+                  <Progress value={Number((Math.round((watchStatus.progress || 0) / 60) / movie.runtime * 100).toFixed(2))} className="w-full max-w-sm mb-4 mt-2" />
+                </>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-4">
                 <Link
                   href={`/movies/${id}/watch`}
-                  className="flex items-center gap-3 bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-xl font-bold text-lg transition-transform hover:scale-105 shadow-lg shadow-red-900/20"
+                  className="flex flex-col w-full sm:w-fit items-center justify-center gap-1 bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-xl font-bold text-lg transition-transform hover:scale-105 shadow-lg shadow-red-900/20"
                 >
-                  <Play className="fill-white w-6 h-6" />
-                  Guarda Ora
+                  {watchStatus?.status === 'watching' ? (
+                    <span>Riprendi</span>
+                  ) : (
+                    <p className='w-full text-nowrap'>
+                      Guarda Ora
+                    </p>
+                  )}
                 </Link>
                 <WatchListButton
                   tmdbId={movie.id}
@@ -138,6 +165,7 @@ export default async function MoviePage({
           </div>
         </div>
       </div>
+      <MovieStatusChecker tmdbId={movie.id} />
     </main>
   );
 }
