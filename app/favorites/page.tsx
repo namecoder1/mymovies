@@ -1,71 +1,44 @@
 'use client';
 import { useProfile } from '@/components/ProfileProvider';
-import { getWatchList } from '@/lib/actions';
 import { ContentItem } from '@/lib/types';
 import { Heart } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
 import CategorySection from '@/components/CategorySection';
+import { useUserMedia } from '@/components/UserMediaProvider';
 
 const FavoritesPage = () => {
     const { currentProfile } = useProfile();
-    const [favorites, setFavorites] = useState<ContentItem[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { userMedia, isLoading } = useUserMedia();
 
-    useEffect(() => {
-        async function fetchFavorites() {
-            if (!currentProfile) {
-                setFavorites([]);
-                setIsLoading(false);
-                return;
-            }
+    const favorites = useMemo(() => {
+        if (!currentProfile) return [];
 
-            try {
-                // Client-side fetch using Supabase directly to avoid 431 on Server Actions
-                const { createClient } = await import('@/supabase/client');
-                const supabase = createClient();
-
-                const { data, error } = await supabase
-                    .from('user_media')
-                    .select('*')
-                    .eq('profile_id', currentProfile.id);
-
-                if (error) throw error;
-
-                const allWatched = (data || []).map(item => ({
-                    ...item,
-                    isFavorite: item.is_favorite,
-                    posterPath: item.poster_path,
-                    releaseDate: item.release_date,
-                    mediaType: item.media_type,
-                    tmdbId: item.tmdb_id,
-                    totalDuration: item.total_duration,
-                    lastSeason: item.last_season,
-                    lastEpisode: item.last_episode,
-                    vote: item.vote,
-                }));
-
-                const favs = allWatched
-                    .filter(item => item.isFavorite)
-                    .map(item => ({
-                        ...item,
-                        id: item.tmdbId,
-                        poster_path: item.posterPath,
-                        media_type: item.mediaType,
-                        vote_average: item.rating || 0,
-                        release_date: item.releaseDate,
-                        first_air_date: item.releaseDate,
-                        name: item.mediaType === 'tv' ? item.title : undefined,
-                    }));
-                setFavorites(favs);
-            } catch (error) {
-                console.error("Failed to fetch favorites", error);
-            } finally {
-                setIsLoading(false);
-            }
-        }
-
-        fetchFavorites();
-    }, [currentProfile]);
+        const allItems = Array.from(userMedia.values());
+        
+        return allItems
+            .filter(item => item.isFavorite)
+            .map(item => ({
+                id: item.tmdbId,
+                title: item.title || '',
+                name: item.mediaType === 'tv' ? (item.title || '') : '',
+                poster_path: item.posterPath || '',
+                media_type: item.mediaType,
+                vote_average: item.rating || 0,
+                release_date: item.releaseDate || '',
+                first_air_date: item.releaseDate || '',
+                progress: item.progress,
+                totalDuration: item.totalDuration,
+                // Add required fields to match ContentItem type
+                backdrop_path: '',
+                overview: '',
+                genre_ids: [],
+                original_language: '',
+                popularity: 0,
+                vote_count: 0,
+                video: false,
+                adult: false,
+            } as ContentItem));
+    }, [userMedia, currentProfile]);
 
     if (!currentProfile) {
         return (
@@ -76,14 +49,6 @@ const FavoritesPage = () => {
                 </div>
             </div>
         );
-    }
-
-    if (isLoading) {
-         return (
-             <div className='min-h-screen bg-black pt-24 pb-10 flex items-center justify-center'>
-                 <div className="text-white">Caricamento...</div>
-             </div>
-         );
     }
 
     return (
@@ -97,13 +62,26 @@ const FavoritesPage = () => {
             </div>
 
             <div className='container mx-auto px-4'>
+                {/* Show loading state only within the content area if strictly needed, 
+                    but usually we want to show whatever we have or empty state */}
+                
                 {favorites.length > 0 ? (
                     <CategorySection
                         title=""
                         items={favorites}
                     />
                 ) : (
-                    <p className="text-zinc-500 text-lg">Non hai ancora aggiunto nulla ai preferiti.</p>
+                    // We can show a loading skeleton here if isLoading is true and no favorites yet,
+                    // or just "No favorites" if loaded.
+                    isLoading ? (
+                         <div className="flex gap-4 overflow-x-auto pb-4">
+                            {[1, 2, 3, 4, 5].map((i) => (
+                                <div key={i} className="min-w-[160px] h-[240px] bg-zinc-900 rounded-lg animate-pulse" />
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-zinc-500 text-lg">Non hai ancora aggiunto nulla ai preferiti.</p>
+                    )
                 )}
             </div>
         </div>

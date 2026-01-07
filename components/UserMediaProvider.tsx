@@ -100,7 +100,9 @@ export function UserMediaProvider({ children }: { children: React.ReactNode }) {
                 isFavorite: false,
                 vote: null,
                 progress: 0,
-                updatedAt: new Date().toISOString()
+                updatedAt: new Date().toISOString(),
+                title: '',
+                posterPath: ''
             };
 
             newMap.set(item.tmdbId, { ...existing, ...item });
