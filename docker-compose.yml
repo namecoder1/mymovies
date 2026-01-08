@@ -1,8 +1,8 @@
 version: '3.9'
 
 services:
-  mymovies:
-    container_name: mymovies-app
+  famflix:
+    container_name: famflix-app
     build:
       context: .
       dockerfile: Dockerfile

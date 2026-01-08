@@ -1,6 +1,6 @@
 # 🏠 MyMovies Home Server Setup Guide
 
-This guide will help you set up **MyMovies** on your home server (e.g., your old iMac) so you and your family can access it from anywhere, securely.
+This guide will help you set up **Famflix** on your home server (e.g., your old iMac) so you and your family can access it from anywhere, securely.
 
 ## 📋 Prerequisites
 
@@ -34,7 +34,7 @@ I have included a file named `start.command`.
 ### Option 2: Docker Desktop
 1.  Open Docker Desktop.
 2.  Go to "Containers".
-3.  Find `mymovies-app` and click the "Play" (Start) button.
+3.  Find `famflix-app` and click the "Play" (Start) button.
 
 ---
 
