@@ -57,7 +57,7 @@ export default function EpisodeSelector({
       {/* Trigger Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="absolute top-8 right-8 z-50 flex items-center gap-2 bg-black/70 hover:bg-black/90 backdrop-blur-md text-white px-4 py-2 rounded-lg shadow-lg transition-all border border-white/20"
+        className="absolute top-4 right-6 z-50 flex items-center gap-2 bg-black/70 hover:bg-black/90 backdrop-blur-md text-white px-4 py-2 rounded-lg shadow-lg transition-all border border-white/20"
       >
         <List className="w-5 h-5" />
         <span className="font-semibold">Episodi</span>
@@ -118,7 +118,7 @@ export default function EpisodeSelector({
                           >
                             <div className="flex items-start gap-3">
                               {/* Thumbnail */}
-                              <div className="relative flex-shrink-0">
+                              <div className="relative shrink-0">
                                 {episode.still_path ? (
                                   <img
                                     src={`https://image.tmdb.org/t/p/w185${episode.still_path}`}
@@ -149,7 +149,7 @@ export default function EpisodeSelector({
                                     {episode.episode_number}. {episode.name}
                                   </span>
                                   {isCurrent && (
-                                    <Check className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
+                                    <Check className="w-4 h-4 text-green-400 shrink-0 mt-0.5" />
                                   )}
                                 </div>
 

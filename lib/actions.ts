@@ -469,13 +469,14 @@ export async function updateEpisodeProgress(
     genres?: string;
   }
 ) {
-  console.log("SERVER: updateEpisodeProgress called", {
+  /* console.log("SERVER: updateEpisodeProgress called", {
     profileId,
     tmdbId,
     season,
     episode,
     progress,
-  });
+    targetTable: 'episode_progress'
+  }); */
   try {
     const supabase = await createClient();
 
@@ -613,12 +614,13 @@ export async function updateMovieProgress(
     genres?: string;
   }
 ) {
-  console.log("SERVER: updateMovieProgress called", {
+  /* console.log("SERVER: updateMovieProgress called", {
     profileId,
     tmdbId,
     progress,
     duration,
-  });
+    targetTable: 'movie_progress'
+  }); */
   try {
     const supabase = await createClient();
 
@@ -745,7 +747,6 @@ export async function checkAndCompleteMovie(profileId: string, tmdbId: number) {
 }
 
 export async function checkUrlAvailability(url: string) {
-  console.log("SERVER: checkUrlAvailability checking:", url);
   try {
     const response = await fetch(url, {
       method: "HEAD",
@@ -755,10 +756,6 @@ export async function checkUrlAvailability(url: string) {
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
     });
-    console.log(
-      "SERVER: checkUrlAvailability result:",
-      response.status !== 404
-    );
     return response.status !== 404;
   } catch (error) {
     console.error("Failed to check URL availability:", error);
@@ -787,6 +784,389 @@ export async function fetchTVCredits(tmdbId: string) {
     return { success: true, data: credits };
   } catch (error: any) {
     console.error("Failed to fetch TV credits:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function checkServerDetailedStatus(url: string) {
+  const start = Date.now();
+  try {
+    const response = await fetch(url, {
+      method: "HEAD",
+      cache: "no-store",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(5000), // 5s timeout
+    });
+
+    // If HEAD fails with 405 (Method Not Allowed), try GET
+    if (response.status === 405) {
+      const getResponse = await fetch(url, {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+        signal: AbortSignal.timeout(5000),
+      });
+      const latency = Date.now() - start;
+      return {
+        online: getResponse.ok || getResponse.status < 500, // Consider 404/403 as "Online but maybe blocked/missing", but server is UP. 5xx is server error.
+        // Actually usually we want to know if it's "Working".
+        // Let's say: 200-299 OK.
+        status: getResponse.status,
+        latency,
+        message: getResponse.statusText
+      };
+    }
+
+    const latency = Date.now() - start;
+    return {
+      online: response.ok, // 200-299
+      status: response.status,
+      latency,
+      message: response.statusText,
+    };
+  } catch (error: any) {
+    const latency = Date.now() - start;
+    return {
+      online: false,
+      status: 0,
+      latency,
+      message: error.message || "Connection Failed",
+    };
+  }
+}
+
+// ============================================
+// Stream Providers Actions (Admin UI)
+// ============================================
+
+export interface StreamProvider {
+  id: string;
+  key: string;
+  name: string;
+  host: string;
+  family: string;
+  movie_path_template: string | null;
+  tv_path_template: string | null;
+  extra_params: Record<string, string> | null;
+  is_active: boolean;
+  is_healthy: boolean;
+  status_code: number | null;
+  response_time_ms: number | null;
+  success_rate_24h: number | null;
+  consecutive_failures: number;
+  last_check_at: string | null;
+  last_success_at: string | null;
+  last_failure_reason: string | null;
+  priority: number;
+  supports_movies: boolean;
+  supports_tv: boolean;
+  requires_imdb: boolean;
+  supports_resume: boolean;
+  resume_param: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getStreamProviders(): Promise<StreamProvider[]> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("stream_providers")
+      .select("*")
+      .order("priority", { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error("Failed to get stream providers:", error);
+    return [];
+  }
+}
+
+/**
+ * Get active and healthy providers for streaming, sorted by:
+ * 1. supports_resume DESC (resume-enabled first)
+ * 2. priority ASC (lower priority number = higher preference)
+ */
+export async function getActiveHealthyProviders(
+  mediaType: 'movie' | 'tv'
+): Promise<StreamProvider[]> {
+  try {
+    const supabase = await createClient();
+
+    const mediaFilter = mediaType === 'movie' ? 'supports_movies' : 'supports_tv';
+
+    const { data, error } = await supabase
+      .from("stream_providers")
+      .select("*")
+      .eq("is_active", true)
+      .eq("is_healthy", true)
+      .eq(mediaFilter, true)
+      .order("supports_resume", { ascending: false })
+      .order("priority", { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error("Failed to get active healthy providers:", error);
+    return [];
+  }
+}
+
+
+export async function updateProviderActive(
+  id: string,
+  isActive: boolean
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from("stream_providers")
+      .update({ is_active: isActive })
+      .eq("id", id);
+
+    if (error) throw error;
+    revalidatePath("/servers");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to update provider active status:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateProviderPriority(
+  id: string,
+  priority: number
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from("stream_providers")
+      .update({ priority })
+      .eq("id", id);
+
+    if (error) throw error;
+    revalidatePath("/servers");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to update provider priority:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateProviderNotes(
+  id: string,
+  notes: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from("stream_providers")
+      .update({ notes })
+      .eq("id", id);
+
+    if (error) throw error;
+    revalidatePath("/servers");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to update provider notes:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Trigger the monitor service to check providers
+const MONITOR_SERVICE_URL = process.env.MONITOR_SERVICE_URL || "http://localhost:3030";
+
+export async function triggerCheckAllProviders(): Promise<{
+  success: boolean;
+  data?: any;
+  error?: string;
+}> {
+  try {
+    const response = await fetch(`${MONITOR_SERVICE_URL}/api/check-all`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error(`Monitor service returned ${response.status}`);
+    }
+
+    const data = await response.json();
+    revalidatePath("/servers");
+    return { success: true, data };
+  } catch (error: any) {
+    console.error("Failed to trigger check all providers:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function triggerCheckSingleProvider(key: string): Promise<{
+  success: boolean;
+  data?: any;
+  error?: string;
+}> {
+  try {
+    const response = await fetch(`${MONITOR_SERVICE_URL}/api/check/${key}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error(`Monitor service returned ${response.status}`);
+    }
+
+    const data = await response.json();
+    revalidatePath("/servers");
+    return { success: true, data };
+  } catch (error: any) {
+    console.error(`Failed to trigger check for provider ${key}:`, error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getMonitorServiceStatus(): Promise<{
+  success: boolean;
+  data?: any;
+  error?: string;
+}> {
+  try {
+    const response = await fetch(`${MONITOR_SERVICE_URL}/api/status`, {
+      method: "GET",
+      cache: "no-store",
+      signal: AbortSignal.timeout(3000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Monitor service returned ${response.status}`);
+    }
+
+    const data = await response.json();
+    return { success: true, data };
+  } catch (error: any) {
+    console.error("Failed to get monitor service status:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export interface CreateProviderData {
+  key: string;
+  name: string;
+  host: string;
+  family: 'query-tmdb' | 'path-tmdb' | 'path-imdb' | 'videoid-tmdb';
+  movie_path_template?: string;
+  tv_path_template?: string;
+  priority?: number;
+  supports_movies?: boolean;
+  supports_tv?: boolean;
+  requires_imdb?: boolean;
+  supports_resume?: boolean;
+  resume_param?: string;
+  notes?: string;
+  is_active?: boolean;
+}
+
+export async function createStreamProvider(
+  data: CreateProviderData
+): Promise<{ success: boolean; data?: StreamProvider; error?: string }> {
+  try {
+    const supabase = await createClient();
+
+    const { data: newProvider, error } = await supabase
+      .from("stream_providers")
+      .insert({
+        key: data.key,
+        name: data.name,
+        host: data.host,
+        family: data.family,
+        movie_path_template: data.movie_path_template || null,
+        tv_path_template: data.tv_path_template || null,
+        priority: data.priority ?? 100,
+        supports_movies: data.supports_movies ?? true,
+        supports_tv: data.supports_tv ?? true,
+        requires_imdb: data.requires_imdb ?? false,
+        supports_resume: data.supports_resume ?? false,
+        resume_param: data.resume_param || null,
+        notes: data.notes || null,
+        is_active: data.is_active ?? true,
+        is_healthy: false,
+        consecutive_failures: 0,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    revalidatePath("/servers");
+    return { success: true, data: newProvider };
+  } catch (error: any) {
+    console.error("Failed to create stream provider:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deleteStreamProvider(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from("stream_providers")
+      .delete()
+      .eq("id", id);
+
+    if (error) throw error;
+    revalidatePath("/servers");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to delete stream provider:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateStreamProvider(
+  id: string,
+  data: CreateProviderData
+): Promise<{ success: boolean; data?: StreamProvider; error?: string }> {
+  try {
+    const supabase = await createClient();
+
+    const { data: updatedProvider, error } = await supabase
+      .from("stream_providers")
+      .update({
+        key: data.key,
+        name: data.name,
+        host: data.host,
+        family: data.family,
+        movie_path_template: data.movie_path_template || null,
+        tv_path_template: data.tv_path_template || null,
+        priority: data.priority ?? 100,
+        supports_movies: data.supports_movies ?? true,
+        supports_tv: data.supports_tv ?? true,
+        requires_imdb: data.requires_imdb ?? false,
+        supports_resume: data.supports_resume ?? false,
+        resume_param: data.resume_param || null,
+        notes: data.notes || null,
+        is_active: data.is_active ?? true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    revalidatePath("/servers");
+    return { success: true, data: updatedProvider };
+  } catch (error: any) {
+    console.error("Failed to update stream provider:", error);
     return { success: false, error: error.message };
   }
 }

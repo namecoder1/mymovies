@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { incrementProgress, updateEpisodeProgress, checkUrlAvailability } from '@/lib/actions';
 import { useProfile } from './ProfileProvider';
 import EpisodeSelector from './EpisodeSelector';
+import { getDynamicProviders, StreamRequest, ProviderUrl } from '@/lib/stream-providers';
 
 interface Episode {
   episode_number: number;
@@ -49,214 +50,481 @@ export default function VideoPlayer({
   const { currentProfile } = useProfile();
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initial URL construction - this state will ensure the iframe src is stable
-  // even if the parent re-renders with a new startTime.
-  // Initial URL construction - this state will ensure the iframe src is stable
-  // even if the parent re-renders with a new startTime.
-  const [iframeSrc, setIframeSrc] = useState<string>("");
+  // Fallback State
+  const [iframeSrc, setIframeSrc] = useState<string>('');
+  const [currentProviderKey, setCurrentProviderKey] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
+  const [iframeError, setIframeError] = useState(false);
+  const [errorCount, setErrorCount] = useState(0); // Tracks loading retries for current source
+  const [errorType, setErrorType] = useState<'timeout' | 'load' | 'unknown'>('unknown');
+
+  // Progress State
+  const [currentProgress, setCurrentProgress] = useState(startTime);
+  const formattedDuration = (totalDuration || 0) * 60; // Convert to seconds for internal logic if it's minutes
+  const [localDuration, setLocalDuration] = useState(formattedDuration);
+
+  const [showNextButton, setShowNextButton] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false); // Default to false, wait for interaction
+  const [isHovering, setIsHovering] = useState(false);
+  const [isSwitchingSource, setIsSwitchingSource] = useState(false);
+
+
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const progressRef = useRef(startTime); // In seconds
+
+  /* Ref to keep track of localDuration inside the message listener (which has empty deps) */
+  const localDurationRef = useRef(formattedDuration);
 
   useEffect(() => {
-    const verifySource = async () => {
+    localDurationRef.current = localDuration;
+  }, [localDuration]);
+
+  // Ref to hold latest state/props for periodic updates to avoid resetting the interval
+  const latestDataRef = useRef({
+    isPlaying,
+    currentProfile,
+    mediaType,
+    season,
+    episode,
+    title,
+    posterPath,
+    genres
+  });
+
+  const hasSeekedRef = useRef(false);
+
+  useEffect(() => {
+    latestDataRef.current = {
+      isPlaying,
+      currentProfile,
+      mediaType,
+      season,
+      episode,
+      title,
+      posterPath,
+      genres
+    };
+  }, [isPlaying, currentProfile, mediaType, season, episode, title, posterPath, genres]);
+
+  // Fallback Logic
+  const triedProvidersRef = useRef<Set<string>>(new Set());
+  const providersRef = useRef<ProviderUrl[]>([]); // Cache providers list
+  const currentProviderKeyRef = useRef<string>(''); // Sync state for event listeners
+
+  useEffect(() => {
+    let aborted = false;
+
+    const initializePlayer = async () => {
       setIsLoading(true);
-      const primaryBase =
-        mediaType === 'movie'
-          ? `https://vixsrc.to/movie/${tmdbId}`
-          : `https://vixsrc.to/tv/${tmdbId}/${season}/${episode}`;
-      const primaryUrl = `${primaryBase}?startAt=${startTime}`;
+      setIframeError(false);
+      setErrorCount(0);
+      triedProvidersRef.current.clear();
+      hasSeekedRef.current = false;
 
-      // Check primary source availability (without query params typically, but here we check base or full?)
-      // Usually checking the base URL is safer/simpler for 404 detection.
-      const isAvailable = await checkUrlAvailability(primaryBase);
+      // Fetch providers once on content change
+      const req: StreamRequest = {
+        id: String(tmdbId),
+        type: mediaType,
+        season,
+        episode
+      };
 
-      if (isAvailable) {
-        setIframeSrc(primaryUrl);
-      } else {
-        console.log('Primary source failed (404), switching to fallback');
-        const fallbackUrl =
-          mediaType === 'movie'
-            ? `https://vidsrc.cc/v2/embed/movie/${tmdbId}`
-            : `https://vidsrc.cc/v2/embed/tv/${tmdbId}/${season}/${episode}`;
-        setIframeSrc(fallbackUrl);
-      }
-      setIsLoading(false);
+      console.log('[VideoPlayer] Fetching dynamic providers for', req);
+      const fetchedProviders = await getDynamicProviders(req, startTime);
+
+      if (aborted) return;
+
+      providersRef.current = fetchedProviders;
+      console.log('[VideoPlayer] Got providers:', providersRef.current.map(p => p.key));
+
+      await loadNextProvider();
     };
 
-    verifySource();
-  }, [tmdbId, season, episode, mediaType, startTime]);
+    initializePlayer();
 
-  // Track local progress because we need to send absolute value to episode_progress
-  const [currentProgress, setCurrentProgress] = useState(startTime);
-  const [duration, setDuration] = useState(totalDuration || 0);
-  const [showNextButton, setShowNextButton] = useState(false);
+    return () => {
+      aborted = true;
+    };
+  }, [tmdbId, season, episode, mediaType, startTime]); // Reset on content change
 
-  // Ref to keep currentProgress fresh in interval without resetting it
-  const progressRef = useRef(startTime);
-  const durationRef = useRef(totalDuration || 0);
-  const isPlayingRef = useRef(false);
+  const loadNextProvider = async () => {
+    setIsLoading(true);
+    setIframeError(false);
 
-  const [isHovering, setIsHovering] = useState(false);
+    const fallbackOptions = providersRef.current;
 
-  useEffect(() => {
-    progressRef.current = currentProgress;
-  }, [currentProgress]);
+    // Find first provider we haven't tried yet
+    let nextOption = fallbackOptions.find(opt => !triedProvidersRef.current.has(opt.key));
 
+    if (!nextOption) {
+      console.error('[VideoPlayer] All providers failed.');
+      setIframeError(true);
+      setErrorType('load');
+      setIsLoading(false);
+      return;
+    }
+
+    // Try this provider
+    triedProvidersRef.current.add(nextOption.key);
+    console.log(`[VideoPlayer] Trying provider: ${nextOption.key} (${nextOption.name})`);
+    console.log(`[VideoPlayer] URL: ${nextOption.url}`);
+    console.log(`[VideoPlayer] Supports resume: ${nextOption.supportsResume}, param: ${nextOption.resumeParam}`);
+
+    // Check availability (optional, acts as pre-flight)
+    const available = await checkUrlAvailability(nextOption.url);
+    if (!available) {
+      console.warn(`[VideoPlayer] Provider ${nextOption.key} returned 404 (HEAD check). Skipping...`);
+      loadNextProvider();
+      return;
+    }
+
+    // URL already includes resume parameter if provider supports it
+    // (handled by getDynamicProviders)
+    setIframeSrc(nextOption.url);
+    setCurrentProviderKey(nextOption.key);
+    currentProviderKeyRef.current = nextOption.key;
+    setIsLoading(false);
+    setIsPlaying(false);
+
+    // Reset seek flag for new provider
+    hasSeekedRef.current = false;
+  };
+
+  const handleIframeError = () => {
+    console.error(`Provider ${currentProviderKey} failed to load (iframe onError). Switching...`);
+    loadNextProvider();
+  };
+
+  const handleManualSwitch = async () => {
+    if (isSwitchingSource) return;
+    setIsSwitchingSource(true);
+    // Add current to tried so we skip it
+    if (currentProviderKey) {
+      triedProvidersRef.current.add(currentProviderKey);
+    }
+
+    // Slight delay to show feedback
+    setTimeout(async () => {
+      await loadNextProvider();
+      setIsSwitchingSource(false);
+    }, 500);
+  };
+
+  // Timer-based Progress Tracker
   useEffect(() => {
     if (!currentProfile) return;
+    if (isLoading) return;
 
+    // Reset refs on new content load
+    progressRef.current = startTime;
+    setCurrentProgress(startTime);
+
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+
+    // If localDuration is 0, we'll try to rely on incoming totalDuration if it updates late
+    const d = localDuration > 0 ? localDuration : (totalDuration || 0) * 60;
+    if (d !== localDuration) setLocalDuration(d);
+
+    progressTimerRef.current = setInterval(() => {
+      // Only increment if global isPlaying is true
+      if (document.visibilityState === 'visible' && isPlaying) {
+        // Increment
+        progressRef.current += 1;
+
+        // Cap at duration if known (and if duration isn't 0)
+        // If duration is 0, we keep counting (maybe live or unknown length)
+        if (localDuration > 0 && progressRef.current > localDuration) {
+          progressRef.current = localDuration;
+        }
+
+        setCurrentProgress(progressRef.current);
+
+        // Check for "Next Episode" button (90% completion)
+        if (localDuration > 0) {
+          const percentage = (progressRef.current / localDuration) * 100;
+
+          if (percentage >= 90) {
+            if (!showNextButton) console.log('[VideoPlayer] Showing Next Episode Button!');
+            setShowNextButton(true);
+          } else {
+            setShowNextButton(false);
+          }
+        }
+      }
+    }, 1000);
+
+    return () => {
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    };
+  }, [currentProfile, isLoading, startTime, localDuration, isPlaying, totalDuration]);
+
+
+  // Periodic DB Save (Every minute)
+  useEffect(() => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+
+    intervalRef.current = setInterval(() => {
+      const {
+        isPlaying,
+        currentProfile,
+        mediaType,
+        season,
+        episode,
+        title,
+        posterPath,
+        genres
+      } = latestDataRef.current;
+
+      const currentProgressVal = Math.round(progressRef.current);
+      const currentDurationVal = Math.round(localDurationRef.current);
+
+      console.log('[VideoPlayer] DB Save Interval Tick', {
+        visibility: document.visibilityState,
+        isPlaying,
+        currentProgressVal,
+        currentDurationVal,
+        isValidProfile: !!currentProfile,
+        tmdbId,
+        mediaType
+      });
+
+      if (document.visibilityState === 'visible' && isPlaying && currentProgressVal > 0 && currentProfile) {
+
+        console.log('[VideoPlayer] Saving to DB now...', {
+          mediaType,
+          tmdbId,
+          progress: currentProgressVal,
+          duration: currentDurationVal,
+          table: mediaType === 'tv' ? 'episode_progress' : 'movie_progress'
+        });
+
+        if (mediaType === 'tv' && season && episode) {
+          updateEpisodeProgress(
+            currentProfile.id,
+            tmdbId,
+            season,
+            episode,
+            currentProgressVal,
+            currentDurationVal,
+            {
+              mediaType,
+              title,
+              posterPath,
+              totalDuration: currentDurationVal,
+              genres
+            }
+          );
+        } else {
+          import('@/lib/actions').then(({ updateMovieProgress }) => {
+            updateMovieProgress(
+              currentProfile.id,
+              tmdbId,
+              currentProgressVal,
+              currentDurationVal,
+              {
+                title,
+                posterPath,
+                totalDuration: currentDurationVal,
+                genres
+              }
+            );
+          });
+        }
+      }
+    }, 60000); // 1 minute
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [tmdbId, mediaType, season, episode]); // Only reset on content change
+
+
+  // Listen for generic messages and user interaction
+  useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (!event.data) return;
-      const msg = event.data;
 
-      let parsedMsg = msg;
+      let msg = event.data;
+
+      // 1. Try to parse if string
       if (typeof msg === 'string') {
         try {
-          parsedMsg = JSON.parse(msg);
+          // If it starts with {, it might be JSON
+          if (msg.trim().startsWith('{')) {
+            msg = JSON.parse(msg);
+          }
         } catch (e) {
-          // It might just be a simple string event like 'play', so we ignore JSON parse errors
+          // not JSON, keep as string
         }
       }
 
-      // Handle simple string events (if any)
-      if (
-        parsedMsg === 'play' ||
-        parsedMsg.event === 'play' ||
-        parsedMsg.type === 'play'
-      ) {
-        isPlayingRef.current = true;
+      // Filter react devtools
+      if (typeof msg === 'object' && msg?.source?.includes?.('react-devtools')) return;
+
+      let type = '';
+
+      // 2. Determine Type
+      if (typeof msg === 'string') type = msg;
+      else if (msg.event) type = msg.event;
+      else if (msg.type) type = msg.type;
+
+      // Special handling for PLAYER_EVENT structure seen in logs
+      // Structure: { type: "PLAYER_EVENT", data: { event: "timeupdate", data: { currentTime: ..., duration: ... } } }
+      if (type === 'PLAYER_EVENT' && msg.data) {
+        if (msg.data.event) type = msg.data.event;
+        else if (msg.data.type) type = msg.data.type;
       }
-      if (
-        parsedMsg === 'pause' ||
-        parsedMsg.event === 'pause' ||
-        parsedMsg.type === 'pause'
-      ) {
-        isPlayingRef.current = false;
-      }
 
-      // Handle nested PLAYER_EVENT structure from logs
-      // Structure: { type: "PLAYER_EVENT", data: { event: "play" | "pause" | "timeupdate", ... } }
-      if (
-        typeof parsedMsg === 'object' &&
-        parsedMsg.type === 'PLAYER_EVENT' &&
-        parsedMsg.data
-      ) {
-        const eventType = parsedMsg.data.event;
+      // --- SEEK FALLBACK LOGIC ---
+      // If we haven't seeked yet (and we have a start time), try to force seeking via postMessage
+      // as soon as we get ANY message from the iframe (implies it's ready/active).
+      // --- SEEK FALLBACK LOGIC ---
+      // If we haven't seeked yet (and we have a start time), try to force seeking via postMessage
+      // as soon as we get ANY message from the iframe (implies it's ready/active).
+      // Skip if provider supports resume via URL param (handled in validUrl)
+      // Use ref to avoid stale closure state in event listener
+      const currentKey = currentProviderKeyRef.current;
+      const currentProvider = providersRef.current.find(p => p.key === currentKey);
+      const shouldSkipSeek = currentProvider?.supportsResume;
 
-        if (eventType === 'play') {
-          isPlayingRef.current = true;
-          console.log('Video playing (PLAYER_EVENT)');
-        } else if (eventType === 'pause') {
-          isPlayingRef.current = false;
-          console.log('Video paused (PLAYER_EVENT)');
-        } else if (
-          eventType === 'timeupdate' &&
-          typeof parsedMsg.data.currentTime === 'number'
-        ) {
-          // Sync our local progress with the actual player time
-          progressRef.current = Math.floor(parsedMsg.data.currentTime);
-          setCurrentProgress(progressRef.current);
+      if (startTime > 0 && !hasSeekedRef.current && iframeRef.current?.contentWindow && !shouldSkipSeek) {
+        hasSeekedRef.current = true; // Mark as handled
+        console.log(`[VideoPlayer] Triggering seek sequence to ${startTime}s for ${currentKey}`);
 
-          // Capture duration if available
-          if (
-            parsedMsg.data.duration &&
-            typeof parsedMsg.data.duration === 'number'
-          ) {
-            durationRef.current = Math.floor(parsedMsg.data.duration);
-            setDuration(durationRef.current);
-          }
+        const win = iframeRef.current.contentWindow;
 
-          // Check for 93% completion to show button
-          if (durationRef.current > 0) {
-            const percentage =
-              (progressRef.current / durationRef.current) * 100;
-            if (percentage >= 93) {
-              setShowNextButton(true);
-            } else {
-              setShowNextButton(false);
+        const sendSeek = () => {
+          console.log('[VideoPlayer] Sending seek commands...');
+          // 1. YouTube / Google style
+          win.postMessage(JSON.stringify({
+            event: "command",
+            func: "seekTo",
+            args: [startTime, true]
+          }), "*");
+
+          // 2. Generic "seek" type
+          win.postMessage(JSON.stringify({
+            type: "seek",
+            time: startTime
+          }), "*");
+
+          // 3. Simple "seek" event
+          win.postMessage(JSON.stringify({
+            event: "seek",
+            time: startTime
+          }), "*");
+
+          // 4. Clappr / Other style
+          win.postMessage(JSON.stringify({
+            action: "seek",
+            value: startTime
+          }), "*");
+
+          // 5. Mimic incoming structure (reverse)
+          win.postMessage(JSON.stringify({
+            type: "PLAYER_COMMAND",
+            data: {
+              event: "seek",
+              time: startTime
             }
+          }), "*");
+        };
+
+        // "Shotgun" approach: try immediately, then after short delays to ensure player is ready
+        sendSeek();
+        setTimeout(sendSeek, 1000);
+        setTimeout(sendSeek, 3000);
+        setTimeout(sendSeek, 5000);
+      }
+      // ---------------------------
+
+      // Console log verbose only if needed, now we trust the logic
+      // console.log('[VideoPlayer] Processed Message Type:', type);
+
+      if (type === 'pause') {
+        setIsPlaying(false);
+      }
+
+      if (type === 'play' || type === 'playing') {
+        setIsPlaying(true);
+      }
+
+      // Handle time updates
+      if (type === 'time' || type === 'timeupdate') {
+        let t = -1;
+        let d = -1;
+
+        // Helper to safely find property in msg or msg.data or msg.data.data
+        const findProp = (obj: any, keys: string[]) => {
+          if (!obj) return undefined;
+          for (const k of keys) {
+            if (typeof obj[k] === 'number') return obj[k];
+          }
+          return undefined;
+        };
+
+        const possibleSources = [
+          msg,
+          msg.data,
+          msg.data?.data
+        ];
+
+        for (const src of possibleSources) {
+          if (!src) continue;
+
+          if (t === -1) {
+            const foundT = findProp(src, ['time', 'currentTime', 'position']);
+            if (foundT !== undefined) t = foundT;
           }
 
-          // Implicitly playing if we get time updates
-          isPlayingRef.current = true;
+          if (d === -1) {
+            const foundD = findProp(src, ['duration', 'totalTime', 'totalDuration']);
+            if (foundD !== undefined) d = foundD;
+          }
         }
+
+        if (t >= 0) {
+          // Update local progress
+          // Note: The timer loop also increments progress, but this syncs it to truth
+          if (Math.abs(t - progressRef.current) > 1) {
+            progressRef.current = t;
+            setCurrentProgress(t);
+          }
+          // If we are getting time updates, we are definitely playing
+          setIsPlaying(true);
+        }
+
+        if (d > 0 && Math.abs(d - localDurationRef.current) > 1) {
+          setLocalDuration(d);
+        }
+      }
+    };
+
+    // Heuristic: If window blurs (focus goes to iframe), assume user clicked play
+    const handleBlur = () => {
+      if (document.activeElement === iframeRef.current) {
+        setIsPlaying(true);
       }
     };
 
     window.addEventListener('message', handleMessage);
-
-    // Clear existing interval if props change
-    if (intervalRef.current) clearInterval(intervalRef.current);
-
-    intervalRef.current = setInterval(async () => {
-      // Only SAVE to DB if visible AND playing
-      // We rely on 'timeupdate' to update progressRef.current accurately.
-      // The interval is now just a throttled saver.
-      if (document.visibilityState === 'visible' && isPlayingRef.current) {
-        // We use the current progress (synced from timeupdate)
-        const progressToSave = progressRef.current;
-
-        // Don't save 0 or very start unnecessarily unless we want to mark "started"
-        if (progressToSave > 0) {
-          if (mediaType === 'tv' && season && episode) {
-            updateEpisodeProgress(
-              currentProfile.id,
-              tmdbId,
-              season,
-              episode,
-              progressToSave,
-              durationRef.current,
-              {
-                mediaType,
-                title,
-                posterPath,
-                totalDuration: durationRef.current,
-                genres: genres, // Pass genres
-              }
-            );
-          } else {
-            const { updateMovieProgress } = await import('@/lib/actions');
-            updateMovieProgress(
-              currentProfile.id,
-              tmdbId,
-              progressToSave,
-              durationRef.current,
-              {
-                title,
-                posterPath,
-                totalDuration: durationRef.current,
-                genres: genres, // Pass genres
-              }
-            );
-          }
-          console.log('(+1min) Saved progress to DB:', progressToSave);
-        }
-      }
-    }, 60000); // Each minute
+    window.addEventListener('blur', handleBlur);
 
     return () => {
       window.removeEventListener('message', handleMessage);
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      window.removeEventListener('blur', handleBlur);
     };
-  }, [
-    currentProfile,
-    tmdbId,
-    season,
-    episode,
-    mediaType,
-    title,
-    posterPath,
-    totalDuration,
-    genres,
-  ]);
+  }, []);
 
   return (
     <div
-      className="relative w-full h-full"
+      className="relative w-full h-full bg-black"
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
     >
       {isLoading ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-black">
+        <div className="absolute inset-0 flex items-center justify-center bg-black z-50">
           {posterPath && (
             <>
               <div
@@ -274,23 +542,21 @@ export default function VideoPlayer({
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
           </div>
         </div>
-      ) : iframeSrc.includes('vidsrc.cc') ? (
-        <iframe
-          src={iframeSrc}
-          className="w-full h-full border-none"
-          title={title}
-          allowFullScreen
-          referrerPolicy="origin"
-          sandbox="allow-forms allow-scripts allow-same-origin"
-        />
+      ) : iframeError ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black text-white gap-6 p-8 z-50">
+          <p className="text-xl">Impossibile caricare il video da nessuna sorgente.</p>
+          <button onClick={() => window.location.reload()} className="bg-white text-black px-6 py-2 rounded font-bold">Ricarica Pagina</button>
+        </div>
       ) : (
         <iframe
+          ref={iframeRef}
           src={iframeSrc}
           className="w-full h-full border-none"
           title={title}
           allowFullScreen
-          allow="autoplay; encrypted-media"
           referrerPolicy="origin"
+          allow="autoplay; encrypted-media"
+          onError={handleIframeError}
         />
       )}
 
@@ -305,7 +571,34 @@ export default function VideoPlayer({
         />
       )}
 
-      {/* Next Episode Button - only show at 93%+ OR on hover if there's a next episode */}
+      {/* Manual Switch Server Button */}
+      {/* Manual Switch Server Button - Fail-safe visibility */}
+      {isHovering && (
+        <div className="fixed top-16 right-6 z-50 flex flex-col gap-2">
+          <button
+            onClick={handleManualSwitch}
+            className="bg-red-600 text-white px-3 py-2 rounded-lg shadow-2xl hover:bg-red-700 transition-all font-bold text-base flex items-center gap-2 ring-2 ring-black/50"
+            title="Cambia Server"
+          >
+            {isSwitchingSource ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span className='text-xs'>Cambio...</span>
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+                <span className='text-xs'>CAMBIA SERVER</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+
+      {/* Next Episode Button */}
       {showNextButton && nextEpisodeUrl && mediaType === 'tv' && (
         <a
           href={nextEpisodeUrl}

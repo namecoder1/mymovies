@@ -10,7 +10,7 @@ type UserMediaItem = {
   mediaType: 'movie' | 'tv';
   status: WatchStatus | null;
   isFavorite: boolean;
-  vote: 'like' | 'dislike' | null;
+  vote: number | null;
   progress: number;
   updatedAt: string;
   createdAt: string;

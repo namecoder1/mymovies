@@ -133,7 +133,11 @@ export default async function WatchEpisodePage({
         mediaType="tv"
         title={show.name}
         posterPath={show.poster_path || ''}
-        totalDuration={show.episode_run_time?.[0] ? show.episode_run_time[0] * 60 : 0}
+        totalDuration={
+          (seasonsWithEpisodes
+            .find(s => s.season_number === seasonNum)
+            ?.episodes.find(e => e.episode_number === episodeNum)?.runtime) || 0
+        }
         genres={JSON.stringify(show.genres || [])}
         startTime={startTime}
         nextEpisodeUrl={nextEpisodeUrl}

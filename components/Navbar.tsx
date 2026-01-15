@@ -81,7 +81,7 @@ export default function Navbar() {
           <Link href="/" className="text-2xl font-bold text-red-600 tracking-tighter hover:scale-105 transition-transform">
             Famflix
           </Link>
-          <div className="hidden sm:flex items-center gap-4">
+          <div className="hidden md:flex items-center gap-4">
             <Link href="/movies" className={checkRoute('/movies') ? 'text-red-500' : 'text-white hover:text-red-600 transition-colors'}>
               Film
             </Link>
